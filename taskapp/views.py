@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 
 # Create your views here.
 def index(request):
-    return render(request, "user/index.html")
+    return render(request, "index.html")
 
 
 class NewsListCreateView(generics.ListCreateAPIView):
@@ -29,6 +29,13 @@ class NewsDetailDeleteView(APIView):
         news = get_object_or_404(News, pk=pk)
         news.delete()
         return Response({"message": "News deleted successfully!"})
+
+
+class AllNewsView(APIView):
+    def get(self, request):
+        news = News.objects.all().order_by("-created_at")
+        serializer = NewsSerializer(news, many=True)
+        return Response(serializer.data)
 
 
 class LikeNewsView(APIView):

@@ -8,11 +8,15 @@ from .views import (
     NewsDetailDeleteView,
     LikeNewsView,
     DislikeNewsView,
+    AllNewsView,
 )
 
 urlpatterns = [
     path("", views.index, name="index"),
     path("news/", NewsListCreateView.as_view(), name="news-list-create"),
+    path(
+        "news/all/", AllNewsView.as_view(), name="all-news"
+    ),  # ✅ Endpoint to fetch all news
     path("news/<int:pk>/", NewsDetailDeleteView.as_view(), name="news-detail-delete"),
     path("news/<int:pk>/like/", LikeNewsView.as_view(), name="news-like"),
     path("news/<int:pk>/dislike/", DislikeNewsView.as_view(), name="news-dislike"),
