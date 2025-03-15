@@ -1,10 +1,11 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
+from django.http import JsonResponse
+from django.views import View
 from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import News
 from .serializers import NewsSerializer
-from django.shortcuts import get_object_or_404
 
 
 # Create your views here.
@@ -52,3 +53,18 @@ class DislikeNewsView(APIView):
         news.dislikes += 1
         news.save()
         return Response({"dislikes": news.dislikes})
+
+
+class NewsStatsView(APIView):
+    def get(self, request):
+        total_news = News.objects.count()
+        total_views = sum(news.views for news in News.objects.all())
+        total_likes = sum(news.likes for news in News.objects.all())
+        total_dislikes = sum(news.dislikes for news in News.objects.all())
+
+        return JsonResponse({
+            "total_news": total_news,
+            "total_views": total_views,
+            "total_likes": total_likes,
+            "total_dislikes": total_dislikes
+        })

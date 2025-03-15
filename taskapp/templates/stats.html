@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>News Statistics</title>
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+    />
+    <script
+      src="https://kit.fontawesome.com/a076d05399.js"
+      crossorigin="anonymous"
+    ></script>
+    <style>
+      .stats-box {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+        text-align: center;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container mt-5">
+      <h2 class="text-center">News Portal Statistics</h2>
+      <div class="row">
+        <div class="col-md-3">
+          <div class="stats-box">
+            <h4>Total News</h4>
+            <p id="total-news">0</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="stats-box">
+            <h4>Total Views</h4>
+            <p id="total-views">0</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="stats-box">
+            <h4>Total Likes</h4>
+            <p id="total-likes">0</p>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="stats-box">
+            <h4>Total Dislikes</h4>
+            <p id="total-dislikes">0</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function fetchStats() {
+        fetch("/news/stats/")
+          .then((response) => response.json())
+          .then((data) => {
+            document.getElementById("total-news").innerText = data.total_news;
+            document.getElementById("total-views").innerText = data.total_views;
+            document.getElementById("total-likes").innerText = data.total_likes;
+            document.getElementById("total-dislikes").innerText =
+              data.total_dislikes;
+          })
+          .catch((error) => console.error("Error fetching stats:", error));
+      }
+
+      fetchStats();
+    </script>
+  </body>
+</html>
