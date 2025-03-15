@@ -3,20 +3,16 @@ from . import views
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-# from django.conf import settings
-# from django.conf.urls.static import static
 from .views import (
     NewsListCreateView,
     NewsDetailDeleteView,
     LikeNewsView,
     DislikeNewsView,
     AllNewsView,
-    NewsStatsView
 )
 
 urlpatterns = [
     path("", views.index, name="index"),
-    path("news/stats/", NewsStatsView.as_view(), name="stats"),
     path("news/", NewsListCreateView.as_view(), name="news-list-create"),
     path(
         "news/all/", AllNewsView.as_view(), name="all-news"
