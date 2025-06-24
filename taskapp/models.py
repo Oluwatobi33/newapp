@@ -1,19 +1,248 @@
 from django.db import models
-from django.shortcuts import get_object_or_404
-from rest_framework.response import Response
-from rest_framework.views import APIView
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+from django.core.validators import MinLengthValidator
+import random
+from datetime import timedelta
 
 
-# Create your models here.
-class News(models.Model):
-    title = models.CharField(max_length=255)
-    text = models.TextField()
-    image = models.ImageField(upload_to="news_images/", blank=True, null=True)
-    tags = models.CharField(max_length=255)  # Comma-separated tags
+class CustomUserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('The Email field must be set')
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
+
+        return self.create_user(email, password, **extra_fields)
+
+class User(AbstractBaseUser, PermissionsMixin):
+    ROLES = (
+        ('STAFF', 'Staff/Admin'),
+        ('TECHNICAL', 'Technical Official'),
+        ('REGULAR', 'Regular User'),
+    )
+    
+    email = models.EmailField(_('email address'), unique=True)
+    first_name = models.CharField(_('first name'), max_length=30, blank=True)
+    last_name = models.CharField(_('last name'), max_length=150, blank=True)
+    role = models.CharField(max_length=10, choices=ROLES, default='REGULAR')
+    otp = models.CharField(max_length=6, null=True, blank=True)
+    otp_expiry = models.DateTimeField(null=True, blank=True)
+    is_verified = models.BooleanField(default=False)
+    is_staff = models.BooleanField(
+        _('staff status'),
+        default=False,
+        help_text=_('Designates whether the user can log into this admin site.'),
+    )
+    is_active = models.BooleanField(
+        _('active'),
+        default=True,
+        help_text=_(
+            'Designates whether this user should be treated as active. '
+            'Unselect this instead of deleting accounts.'
+        ),
+    )
+    date_joined = models.DateTimeField(_('date joined'), default=timezone.now)
+
+    objects = CustomUserManager()
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['first_name', 'last_name']
+
+    class Meta:
+        verbose_name = _('user')
+        verbose_name_plural = _('users')
+        # Prevent reverse accessor clashes
+        default_permissions = ()
+        permissions = [
+            ("can_create_post", "Can create blog posts"),
+            ("can_review_post", "Can review and publish posts"),
+        ]
+
+    def __str__(self):
+        return self.email
+
+    def get_full_name(self):
+        return f"{self.first_name} {self.last_name}"
+
+    def get_short_name(self):
+        return self.first_name
+
+    def generate_otp(self):
+        """Generate and save a new OTP"""
+        self.otp = str(random.randint(100000, 999999))
+        self.otp_expiry = timezone.now() + timedelta(minutes=30)
+        self.save()
+        return self.otp
+
+    def verify_otp(self, otp):
+        """Verify OTP with proper null checks"""
+        if not self.otp or not self.otp_expiry:
+            return False
+
+        if timezone.now() > self.otp_expiry:
+            return False
+
+        if self.otp == otp:
+            self.otp = None
+            self.otp_expiry = None
+            self.is_verified = True
+            self.save()
+            return True
+
+        return False
+
+class Category(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    views = models.IntegerField(default=0)
-    likes = models.IntegerField(default=0)
-    dislikes = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Categories"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+class Post(models.Model):
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('PENDING_REVIEW', 'Pending Review'),
+        ('PUBLISHED', 'Published'),
+        ('REJECTED', 'Rejected'),
+    ]
+    
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='posts')
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='authored_posts')
+    title = models.CharField(max_length=200, validators=[MinLengthValidator(10)])
+    slug = models.SlugField(max_length=200, unique=True)
+    summary = models.TextField(max_length=300)
+    content = models.TextField()
+    featured_image = models.ImageField(upload_to='post_images/', blank=True, null=True)
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='DRAFT')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_posts')
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['-created_at'])]
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        if self.status == 'PUBLISHED' and not self.published_at:
+            self.published_at = timezone.now()
+        super().save(*args, **kwargs)
+
+class Comment(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='comments')
+    content = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Comment by {self.user.email} on {self.post.title}'
+
+class PostView(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='views')
+    ip_address = models.GenericIPAddressField()
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    view_date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Post View'
+        verbose_name_plural = 'Post Views'
+        ordering = ['-view_date']
+
+
+class Post(models.Model):
+    DRAFT = 'draft'
+    PUBLISHED = 'published'
+    SCHEDULED = 'scheduled'
+    STATUS_CHOICES = [
+        (DRAFT, 'Draft'),
+        (PUBLISHED, 'Published'),
+        (SCHEDULED, 'Scheduled'),
+    ]
+
+    category = models.ForeignKey(Category, related_name='posts', on_delete=models.SET_NULL, null=True)
+    author = models.ForeignKey(User, related_name='posts', on_delete=models.CASCADE)
+    title = models.CharField(max_length=200, validators=[MinLengthValidator(10)])
+    slug = models.SlugField(max_length=200, unique_for_date='publish_date')
+    summary = models.TextField(max_length=300)
+    content = models.TextField()
+    featured_image = models.ImageField(upload_to='news_images/', blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=DRAFT)
+    publish_date = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    views = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['-publish_date']
+        indexes = [models.Index(fields=['-publish_date'])]
+
+    def __str__(self):
+        return self.title
+
+    def get_absolute_url(self):
+        return reverse('post_detail', kwargs={
+            'year': self.publish_date.year,
+            'month': self.publish_date.month,
+            'day': self.publish_date.day,
+            'slug': self.slug
+        })
+
+    def is_published(self):
+        return self.status == self.PUBLISHED and self.publish_date <= timezone.now()
+
+
+
+
+
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft'),
+        ('PENDING_REVIEW', 'Pending Review'),
+        ('PUBLISHED', 'Published'),
+        ('REJECTED', 'Rejected'),
+    ]
+
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='posts')
+    title = models.CharField(max_length=200, validators=[MinLengthValidator(10)])
+    content = models.TextField()
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='DRAFT')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_posts')
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if self.status == 'PUBLISHED' and not self.published_at:
+            self.published_at = timezone.now()
+        super().save(*args, **kwargs)

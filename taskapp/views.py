@@ -1,66 +1,136 @@
-from django.shortcuts import render
-from rest_framework import generics
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from .models import News
-from .serializers import NewsSerializer
-from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework import generics, permissions, filters, pagination
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Post, Category, Comment
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+from .serializers import (
+    CategorySerializer, 
+    PostListSerializer,
+    PostDetailSerializer,
+    PostCreateSerializer,
+    CommentSerializer
+)
+
+# Custom pagination class
+class StandardResultsSetPagination(pagination.PageNumberPagination):
+    page_size = 5
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+class PostListView(generics.ListAPIView):
+    serializer_class = PostListSerializer
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['category', 'author', 'status']
+    search_fields = ['title', 'summary', 'content']
+    ordering_fields = ['publish_date', 'created_at', 'views']
+    ordering = ['-publish_date']
+
+    def get_queryset(self):
+        queryset = Post.objects.filter(
+            status='published',
+            publish_date__lte=timezone.now()
+        ).select_related('author', 'category').prefetch_related('comments')
+        return queryset
+
+# ... rest of your view classes ...from django.utils import timezone
+from rest_framework import generics, permissions, filters, pagination
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Post, Category, Comment
+
+from .serializers import (
+    CategorySerializer, 
+    PostListSerializer,
+    PostDetailSerializer,
+    PostCreateSerializer,
+    CommentSerializer
+)
+
+# Custom pagination class
+class StandardResultsSetPagination(pagination.PageNumberPagination):
+    page_size = 5
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+class PostListView(generics.ListAPIView):
+    serializer_class = PostListSerializer
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['category', 'author', 'status']
+    search_fields = ['title', 'summary', 'content']
+    ordering_fields = ['publish_date', 'created_at', 'views']
+    ordering = ['-publish_date']
+
+    def get_queryset(self):
+        queryset = Post.objects.filter(
+            status='published',
+            publish_date__lte=timezone.now()
+        ).select_related('author', 'category').prefetch_related('comments')
+        return queryset
+
+# ... rest of your view classes ...
 
 
-# Create your views here.
-def index(request):
-    return render(request, "index.html")
+
+class CategoryListView(generics.ListAPIView):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
 
 
-class NewsListCreateView(generics.ListCreateAPIView):
-    queryset = News.objects.all().order_by("-created_at")
-    serializer_class = NewsSerializer
 
+class PostDetailView(generics.RetrieveAPIView):
+    queryset = Post.objects.all()
+    serializer_class = PostDetailSerializer
+    lookup_field = 'slug'
 
-class NewsDetailDeleteView(APIView):
-    def get(self, request, pk):
-        news = get_object_or_404(News, pk=pk)
-        news.views += 1
-        news.save()
-        serializer = NewsSerializer(news)
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        
+        # Track view
+        ip_address = request.META.get('REMOTE_ADDR')
+        PostView.objects.create(
+            post=instance,
+            ip_address=ip_address,
+            user=request.user if request.user.is_authenticated else None
+        )
+        
         return Response(serializer.data)
 
-    def delete(self, request, pk):
-        news = get_object_or_404(News, pk=pk)
-        news.delete()
-        return Response({"message": "News deleted successfully!"})
+class PostCreateView(generics.CreateAPIView):
+    queryset = Post.objects.all()
+    serializer_class = PostCreateSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
 
-class AllNewsView(APIView):
-    def get(self, request):
-        news = News.objects.all().order_by("-created_at")
-        serializer = NewsSerializer(news, many=True)
-        return Response(serializer.data)
+class PostUpdateView(generics.UpdateAPIView):
+    queryset = Post.objects.all()
+    serializer_class = PostCreateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'slug'
 
+    def get_queryset(self):
+        return self.queryset.filter(author=self.request.user)
 
-class LikeNewsView(APIView):
-    def post(self, request, pk):
-        news = get_object_or_404(News, pk=pk)
-        news.likes += 1
-        news.save()
-        return Response({"likes": news.likes})
+class PostDeleteView(generics.DestroyAPIView):
+    queryset = Post.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'slug'
 
-class NewsStatsView(APIView):
-    def get(self, request):
-        total_news = News.objects.count()
-        total_views = sum(news.views for news in News.objects.all())
-        total_likes = sum(news.likes for news in News.objects.all())
-        total_dislikes = sum(news.dislikes for news in News.objects.all())
+    def get_queryset(self):
+        return self.queryset.filter(author=self.request.user)
 
-        return JsonResponse({
-            "total_news": total_news,
-            "total_views": total_views,
-            "total_likes": total_likes,
-            "total_dislikes": total_dislikes
-        })
-class DislikeNewsView(APIView):
-    def post(self, request, pk):
-        news = get_object_or_404(News, pk=pk)
-        news.dislikes += 1
-        news.save()
-        return Response({"dislikes": news.dislikes})
+class CommentCreateView(generics.CreateAPIView):
+    queryset = Comment.objects.all()
+    serializer_class = CommentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        post = generics.get_object_or_404(Post, slug=self.kwargs['slug'])
+        serializer.save(user=self.request.user, post=post)

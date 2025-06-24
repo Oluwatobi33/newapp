@@ -1,26 +1,32 @@
 from django.urls import path
-from . import views
-from django.urls import path
-from django.conf import settings
-from django.conf.urls.static import static
+from .auth_views import login_request, verify_otp, resend_otp
+from .views import PostCreateView
+
 from .views import (
-    NewsListCreateView,
-    NewsDetailDeleteView,
-    LikeNewsView,
-    DislikeNewsView,
-    AllNewsView,
+    CategoryListView,
+    PostListView,
+    PostDetailView,
+    PostCreateView,
+    PostUpdateView,
+    PostDeleteView,
+    CommentCreateView
 )
 
 urlpatterns = [
-    path("", views.index, name="index"),
-    path("news/", NewsListCreateView.as_view(), name="news-list-create"),
-    path(
-        "news/all/", AllNewsView.as_view(), name="all-news"
-    ),  # ✅ Endpoint to fetch all news
-    path("news/<int:pk>/", NewsDetailDeleteView.as_view(), name="news-detail-delete"),
-    path("news/<int:pk>/like/", LikeNewsView.as_view(), name="news-like"),
-    path("news/<int:pk>/dislike/", DislikeNewsView.as_view(), name="news-dislike"),
+        # Authentication URLs
+    path('login/', login_request, name='login'),
+    path('verify-otp/', verify_otp, name='verify_otp'),
+    path('resend-otp/', resend_otp, name='resend_otp'),
+    
+    path('categories/', CategoryListView.as_view(), name='category-list'),
+    path('posts/', PostListView.as_view(), name='post-list'),
+
+    
+    path('posts/create/', PostCreateView.as_view(), name='post_create'),
+    # path('posts/review/<int:pk>/', PostReviewView.as_view(), name='post_review'),
+    
+    path('posts/<slug:slug>/', PostDetailView.as_view(), name='post-detail'),
+    path('posts/<slug:slug>/update/', PostUpdateView.as_view(), name='post-update'),
+    path('posts/<slug:slug>/delete/', PostDeleteView.as_view(), name='post-delete'),
+    path('posts/<slug:slug>/comments/', CommentCreateView.as_view(), name='comment-create'),
 ]
-# Serve media files during development only
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
