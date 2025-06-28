@@ -1,14 +1,44 @@
 from rest_framework import serializers
 from .models import Category, Post, Comment
 from django.contrib.auth import get_user_model
-
+from .models import User, StaffProfile, TechnicalProfile, Category, Post
 User = get_user_model()
 from .models import Post, User
+
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'role']
+        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'is_verified']
+
+
+
+class StaffProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer()
+    
+    class Meta:
+        model = StaffProfile
+        fields = '__all__'
+    
+    def create(self, validated_data):
+        user_data = validated_data.pop('user')
+        user = User.objects.create_user(role='STAFF', **user_data)
+        return StaffProfile.objects.create(user=user, **validated_data)
+    
+class TechnicalProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer()
+    
+    class Meta:
+        model = TechnicalProfile
+        fields = '__all__'
+    
+    def create(self, validated_data):
+        user_data = validated_data.pop('user')
+        user = User.objects.create_user(role='TECHNICAL', **user_data)
+        return TechnicalProfile.objects.create(user=user, **validated_data)
+
+
 
 class PostSerializer(serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
@@ -62,10 +92,14 @@ class CommentSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'content', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
+
+
 class PostCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = [
-            'title', 'category', 'summary', 'content', 
-            'featured_image', 'status', 'publish_date'
-        ]
+        fields = ['title', 'category', 'summary', 'content', 'featured_image', 'status', 'publish_date']
+        
+    def create(self, validated_data):
+        # Automatically set the author to the current user
+        validated_data['author'] = self.context['request'].user
+        return super().create(validated_data)

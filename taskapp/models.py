@@ -28,17 +28,20 @@ class CustomUserManager(BaseUserManager):
 
         return self.create_user(email, password, **extra_fields)
 
+
+
+
 class User(AbstractBaseUser, PermissionsMixin):
-    ROLES = (
-        ('STAFF', 'Staff/Admin'),
-        ('TECHNICAL', 'Technical Official'),
+    ROLE_CHOICES = (
         ('REGULAR', 'Regular User'),
+        ('STAFF', 'Staff/Content Creator'),
+        ('TECHNICAL', 'Technical Official/Reviewer'),
     )
     
     email = models.EmailField(_('email address'), unique=True)
     first_name = models.CharField(_('first name'), max_length=30, blank=True)
     last_name = models.CharField(_('last name'), max_length=150, blank=True)
-    role = models.CharField(max_length=10, choices=ROLES, default='REGULAR')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='REGULAR')
     otp = models.CharField(max_length=6, null=True, blank=True)
     otp_expiry = models.DateTimeField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
@@ -65,21 +68,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     class Meta:
         verbose_name = _('user')
         verbose_name_plural = _('users')
-        # Prevent reverse accessor clashes
-        default_permissions = ()
-        permissions = [
-            ("can_create_post", "Can create blog posts"),
-            ("can_review_post", "Can review and publish posts"),
-        ]
 
     def __str__(self):
         return self.email
 
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}"
-
-    def get_short_name(self):
-        return self.first_name
 
     def generate_otp(self):
         """Generate and save a new OTP"""
@@ -105,6 +99,51 @@ class User(AbstractBaseUser, PermissionsMixin):
 
         return False
 
+class StaffProfile(models.Model):
+    GENDER_CHOICES = [
+        ("Male", "Male"),
+        ("Female", "Female"),
+        ("Other", "Other"),
+    ]
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="staff_profile"
+    )
+    gender = models.CharField(
+        max_length=10, choices=GENDER_CHOICES, null=True, blank=True
+    )
+    position = models.CharField(max_length=100)
+    is_teaching = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["position"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user.first_name} {self.user.last_name} ({self.position})"
+
+class TechnicalProfile(models.Model):
+    GENDER_CHOICES = [
+        ("Male", "Male"),
+        ("Female", "Female"),
+        ("Other", "Other"),
+    ]
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="technical_profile"
+    )
+    gender = models.CharField(
+        max_length=10, choices=GENDER_CHOICES, null=True, blank=True
+    )
+    position = models.CharField(max_length=100)
+    expertise = models.CharField(max_length=200, blank=True)
+
+    def __str__(self):
+        return f"{self.user.first_name} {self.user.last_name} ({self.position})"
+
+
+
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
@@ -119,6 +158,7 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
+
 class Post(models.Model):
     STATUS_CHOICES = [
         ('DRAFT', 'Draft'),
@@ -127,8 +167,18 @@ class Post(models.Model):
         ('REJECTED', 'Rejected'),
     ]
     
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='posts')
-    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='authored_posts')
+    category = models.ForeignKey(
+        Category, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='post_category'  # Changed related name
+    )
+    author = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='authored_posts'
+    )
     title = models.CharField(max_length=200, validators=[MinLengthValidator(10)])
     slug = models.SlugField(max_length=200, unique=True)
     summary = models.TextField(max_length=300)
@@ -138,7 +188,13 @@ class Post(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     published_at = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_posts')
+    reviewed_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='reviewed_posts'  # Keep this as is
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -152,9 +208,18 @@ class Post(models.Model):
             self.published_at = timezone.now()
         super().save(*args, **kwargs)
 
+
 class Comment(models.Model):
-    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='comments')
+    post = models.ForeignKey(
+        Post, 
+        on_delete=models.CASCADE, 
+        related_name='post_comments'  # Changed related name
+    )
+    user = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='user_comments'  # Changed related name
+    )
     content = models.TextField(max_length=1000)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -167,82 +232,22 @@ class Comment(models.Model):
         return f'Comment by {self.user.email} on {self.post.title}'
 
 class PostView(models.Model):
-    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='views')
+    post = models.ForeignKey(
+        Post, 
+        on_delete=models.CASCADE, 
+        related_name='post_views'  # Changed related name
+    )
     ip_address = models.GenericIPAddressField()
-    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    user = models.ForeignKey(
+        User, 
+        null=True, 
+        blank=True, 
+        on_delete=models.SET_NULL,
+        related_name='user_views'  # Added related name
+    )
     view_date = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Post View'
         verbose_name_plural = 'Post Views'
         ordering = ['-view_date']
-
-
-class Post(models.Model):
-    DRAFT = 'draft'
-    PUBLISHED = 'published'
-    SCHEDULED = 'scheduled'
-    STATUS_CHOICES = [
-        (DRAFT, 'Draft'),
-        (PUBLISHED, 'Published'),
-        (SCHEDULED, 'Scheduled'),
-    ]
-
-    category = models.ForeignKey(Category, related_name='posts', on_delete=models.SET_NULL, null=True)
-    author = models.ForeignKey(User, related_name='posts', on_delete=models.CASCADE)
-    title = models.CharField(max_length=200, validators=[MinLengthValidator(10)])
-    slug = models.SlugField(max_length=200, unique_for_date='publish_date')
-    summary = models.TextField(max_length=300)
-    content = models.TextField()
-    featured_image = models.ImageField(upload_to='news_images/', blank=True)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=DRAFT)
-    publish_date = models.DateTimeField(default=timezone.now)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    views = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ['-publish_date']
-        indexes = [models.Index(fields=['-publish_date'])]
-
-    def __str__(self):
-        return self.title
-
-    def get_absolute_url(self):
-        return reverse('post_detail', kwargs={
-            'year': self.publish_date.year,
-            'month': self.publish_date.month,
-            'day': self.publish_date.day,
-            'slug': self.slug
-        })
-
-    def is_published(self):
-        return self.status == self.PUBLISHED and self.publish_date <= timezone.now()
-
-
-
-
-
-    STATUS_CHOICES = [
-        ('DRAFT', 'Draft'),
-        ('PENDING_REVIEW', 'Pending Review'),
-        ('PUBLISHED', 'Published'),
-        ('REJECTED', 'Rejected'),
-    ]
-
-    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='posts')
-    title = models.CharField(max_length=200, validators=[MinLengthValidator(10)])
-    content = models.TextField()
-    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='DRAFT')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    published_at = models.DateTimeField(null=True, blank=True)
-    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_posts')
-
-    def __str__(self):
-        return self.title
-
-    def save(self, *args, **kwargs):
-        if self.status == 'PUBLISHED' and not self.published_at:
-            self.published_at = timezone.now()
-        super().save(*args, **kwargs)

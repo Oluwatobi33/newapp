@@ -64,7 +64,7 @@ def login_request(request):
         except User.DoesNotExist:
             messages.error(request, "Account not found")
     
-    return render(request, 'auth/login.html')
+    return render(request, 'signin.html')
 
 def verify_otp(request):
     if 'otp_user_id' not in request.session:
@@ -83,7 +83,7 @@ def verify_otp(request):
         else:
             messages.error(request, "Invalid or expired OTP")
     
-    return render(request, 'auth/verify_otp.html')
+    return render(request, 'verify_otp.html')
 
 def resend_otp(request):
     if 'otp_user_id' not in request.session:

@@ -38,9 +38,18 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
-    "taskapp",
+    'taskapp.apps.TaskappConfig', 
     'django_filters'
 ]
+
+# Optional but recommended for migrations
+# MIGRATION_MODULES = {
+#     'auth': None,
+#     'contenttypes': None,
+#     'sessions': None,
+# }
+# Add this at the bottom
+AUTH_USER_MODEL = 'taskapp.User'  # Critical for custom user model
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
