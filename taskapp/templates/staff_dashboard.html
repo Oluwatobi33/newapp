@@ -1,0 +1,58 @@
+
+
+{% block content %}
+<div class="container">
+    <h2 class="my-4">Staff Dashboard</h2>
+    
+    <div class="d-flex justify-content-between mb-4">
+        <div>
+            <span class="badge bg-secondary">Drafts: {{ draft_count }}</span>
+            <span class="badge bg-warning text-dark mx-2">Pending: {{ pending_count }}</span>
+            <span class="badge bg-success">Published: {{ published_count }}</span>
+        </div>
+        <a href="{% url 'create_post' %}" class="btn btn-primary">Create New Post</a>
+    </div>
+    
+    {% if no_posts %}
+    <div class="alert alert-info">
+        <h4>Welcome to your dashboard!</h4>
+        <p>You haven't created any posts yet. Get started by creating your first post.</p>
+        <a href="{% url 'create_post' %}" class="btn btn-primary">Create Your First Post</a>
+    </div>
+    {% else %}
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Status</th>
+                <th>Created At</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for post in posts %}
+            <tr>
+                <td>{{ post.title }}</td>
+                <td>
+                    {% if post.status == 'DRAFT' %}
+                    <span class="badge bg-secondary">Draft</span>
+                    {% elif post.status == 'PENDING_REVIEW' %}
+                    <span class="badge bg-warning text-dark">Pending Review</span>
+                    {% elif post.status == 'PUBLISHED' %}
+                    <span class="badge bg-success">Published</span>
+                    {% else %}
+                    <span class="badge bg-danger">Rejected</span>
+                    {% endif %}
+                </td>
+                <td>{{ post.created_at|date:"M d, Y" }}</td>
+                <td>
+                    <a href="{% url 'edit_post' post.id %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                    <a href="{% url 'delete_post' post.id %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}

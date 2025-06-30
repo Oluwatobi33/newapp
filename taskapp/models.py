@@ -231,6 +231,7 @@ class Comment(models.Model):
     def __str__(self):
         return f'Comment by {self.user.email} on {self.post.title}'
 
+
 class PostView(models.Model):
     post = models.ForeignKey(
         Post, 
