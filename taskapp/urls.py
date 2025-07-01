@@ -17,7 +17,7 @@ urlpatterns = [
     path('login/', login_request, name='login'),
     path('verify-otp/', verify_otp, name='verify_otp'),
     path('resend-otp/', resend_otp, name='resend_otp'),
-    
+        path('technical/review/<int:post_id>/', views.review_post, name='review_post'),
     
     
     path('staff/dashboard/', views.staff_dashboard, name='staff_dashboard'),

@@ -269,8 +269,7 @@ from django.contrib import messages
 def logout_view(request):
     logout(request)
     return redirect('login')
-
-
+from datetime import timedelta
 
 @login_required
 def technical_dashboard(request):
@@ -281,18 +280,61 @@ def technical_dashboard(request):
     # Get posts pending review
     pending_posts = Post.objects.filter(status='PENDING_REVIEW').order_by('-created_at')
     
-    # Get recently reviewed posts
+    # Get posts reviewed by this user in the last 30 days
+    seven_days_ago = timezone.now() - timedelta(days=30)
     reviewed_posts = Post.objects.filter(
-        reviewed_by=request.user
-    ).exclude(status='PENDING_REVIEW').order_by('-published_at')[:5]
+        reviewed_by=request.user,
+        published_at__gte=seven_days_ago
+    ).exclude(status='PENDING_REVIEW').order_by('-published_at')[:10]
+    
+    # Stats for dashboard
+    pending_count = pending_posts.count()
+    reviewed_count = Post.objects.filter(reviewed_by=request.user).count()
+    recent_count = reviewed_posts.count()
     
     context = {
         'pending_posts': pending_posts,
         'reviewed_posts': reviewed_posts,
-        'pending_count': pending_posts.count(),
+        'pending_count': pending_count,
+        'reviewed_count': reviewed_count,
+        'recent_count': recent_count,
     }
     return render(request, 'technical_dashboard.html', context)
 
+@login_required
+def review_post(request, post_id):
+    # Only technical users can review posts
+    if request.user.role != 'TECHNICAL':
+        return redirect('index')
+    
+    post = get_object_or_404(Post, id=post_id)
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        comment = request.POST.get('review_comment', '')
+        
+        if action == 'approve':
+            post.status = 'PUBLISHED'
+            post.reviewed_by = request.user
+            post.published_at = timezone.now()
+            post.save()
+            messages.success(request, "Post approved and published successfully!")
+            
+        elif action == 'reject':
+            post.status = 'REJECTED'
+            post.reviewed_by = request.user
+            post.save()
+            messages.success(request, "Post has been rejected.")
+            
+        elif action == 'request_revision':
+            post.status = 'DRAFT'
+            post.reviewed_by = request.user
+            post.save()
+            messages.success(request, "Author has been requested to revise the post.")
+            
+        return redirect('technical_dashboard')
+    
+    return render(request, 'review_post.html', {'post': post})
 
 class PostForm(forms.ModelForm):
     class Meta:
