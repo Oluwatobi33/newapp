@@ -158,7 +158,6 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
-
 class Post(models.Model):
     STATUS_CHOICES = [
         ('DRAFT', 'Draft'),
@@ -172,7 +171,7 @@ class Post(models.Model):
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True, 
-        related_name='post_category'  # Changed related name
+        related_name='post_category'
     )
     author = models.ForeignKey(
         User, 
@@ -180,7 +179,7 @@ class Post(models.Model):
         related_name='authored_posts'
     )
     title = models.CharField(max_length=200, validators=[MinLengthValidator(10)])
-    slug = models.SlugField(max_length=200, unique=True)
+    # REMOVED SLUG FIELD
     summary = models.TextField(max_length=300)
     content = models.TextField()
     featured_image = models.ImageField(upload_to='post_images/', blank=True, null=True)
@@ -193,7 +192,7 @@ class Post(models.Model):
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True, 
-        related_name='reviewed_posts'  # Keep this as is
+        related_name='reviewed_posts'
     )
 
     class Meta:
@@ -207,7 +206,6 @@ class Post(models.Model):
         if self.status == 'PUBLISHED' and not self.published_at:
             self.published_at = timezone.now()
         super().save(*args, **kwargs)
-
 
 class Comment(models.Model):
     post = models.ForeignKey(

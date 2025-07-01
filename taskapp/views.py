@@ -206,95 +206,6 @@ class TechnicalSignupView(generics.CreateAPIView):
 
 from rest_framework.permissions import IsAuthenticated
 
-# class StaffDashboardView(APIView):
-#     permission_classes = [IsAuthenticated]
-
-#     def get(self, request):
-#         if request.user.role != 'STAFF':
-#             return Response(
-#                 {"error": "Access denied"}, 
-#                 status=status.HTTP_403_FORBIDDEN
-#             )
-        
-#         # Return staff-specific data
-#         return Response({
-#             "pending_posts": Post.objects.filter(author=request.user, status='DRAFT').count(),
-#             "published_posts": Post.objects.filter(author=request.user, status='PUBLISHED').count(),
-#             # ... other staff data ...
-#         })
-
-# class TechnicalDashboardView(APIView):
-#     permission_classes = [IsAuthenticated]
-
-#     def get(self, request):
-#         if request.user.role != 'TECHNICAL':
-#             return Response(
-#                 {"error": "Access denied"}, 
-#                 status=status.HTTP_403_FORBIDDEN
-#             )
-        
-#         # Return technical-specific data
-#         return Response({
-#             "pending_reviews": Post.objects.filter(status='PENDING_REVIEW').count(),
-#             "recent_activity": Post.objects.filter(reviewed_by=request.user).order_by('-published_at')[:5],
-#             # ... other technical data ...
-#         })
-
-# class LoginView(APIView):
-#     permission_classes = [permissions.AllowAny]
-
-#     def post(self, request, format=None):
-#         email = request.data.get('email')
-#         password = request.data.get('password')
-        
-#         user = authenticate(request, username=email, password=password)
-#         if user is not None:
-#             if user.is_verified:
-#                 login(request, user)
-#                 return Response({"detail": "Login successful"}, status=status.HTTP_200_OK)
-#             else:
-#                 # Generate and send OTP
-#                 otp = user.generate_otp()
-#                 self.send_otp_email(user.email, otp)
-#                 return Response(
-#                     {
-#                         "detail": "OTP sent to your email",
-#                         "user_id": user.id
-#                     },
-#                     status=status.HTTP_200_OK
-#                 )
-#         else:
-#             return Response(
-#                 {"error": "Invalid credentials"},
-#                 status=status.HTTP_400_BAD_REQUEST
-#             )
-    
-#     def send_otp_email(self, email, otp_code):
-#         subject = "Your OTP Code for Verification"
-#         message = f"""
-#         Hello,
-
-#         Your One-Time Password (OTP) for verifying your account is:
-
-#         🔐 {otp_code}
-
-#         This OTP will expire in 30 minutes.
-
-#         If you did not request this, please ignore this email. 
-
-#         Best regards,  
-#         News Blog Team
-#         """
-#         from_email = settings.EMAIL_HOST_USER
-#         recipient_list = [email]
-
-#         try:
-#             send_mail(subject, message, from_email, recipient_list, fail_silently=False)
-#             return True
-#         except Exception as e:
-#             print(f"Failed to send OTP email: {e}")
-#             return False
-
 
 # class VerifyOTPView(APIView):
 #     permission_classes = [permissions.AllowAny]
@@ -351,25 +262,9 @@ def staff_dashboard(request):
     }
     return render(request, 'staff_dashboard.html', context)
 
-class PostForm(forms.ModelForm):
-    class Meta:
-        model = Post
-        fields = ['title', 'category', 'summary', 'content', 'featured_image', 'status']
-        widgets = {
-            'summary': forms.Textarea(attrs={'rows': 3}),
-            'content': forms.Textarea(attrs={'rows': 10}),
-        }
-        labels = {
-            'title': 'Post Title',
-            'category': 'Category',
-            'summary': 'Short Summary',
-            'content': 'Post Content',
-            'featured_image': 'Featured Image',
-            'status': 'Post Status'
-        }
 
 from django.contrib.auth import logout
-
+from django.contrib import messages
 @login_required
 def logout_view(request):
     logout(request)
@@ -398,6 +293,25 @@ def technical_dashboard(request):
     }
     return render(request, 'technical_dashboard.html', context)
 
+
+class PostForm(forms.ModelForm):
+    class Meta:
+        model = Post
+        fields = ['title', 'category', 'summary', 'content', 'featured_image', 'status']
+        widgets = {
+            'summary': forms.Textarea(attrs={'rows': 3, 'maxlength': 300}),
+            'content': forms.Textarea(attrs={'rows': 10}),
+        }
+        labels = {
+            'title': 'Post Title',
+            'category': 'Category',
+            'summary': 'Short Summary',
+            'content': 'Post Content',
+            'featured_image': 'Featured Image',
+            'status': 'Post Status'
+        }
+        
+        
 @login_required
 def create_post(request):
     # Only staff users can create posts
@@ -405,7 +319,6 @@ def create_post(request):
         return redirect('index')
     
     categories = Category.objects.all()
-    error = None
     
     if request.method == 'POST':
         form = PostForm(request.POST, request.FILES)
@@ -414,28 +327,28 @@ def create_post(request):
                 # Create but don't save yet
                 post = form.save(commit=False)
                 
-                # Set additional fields
+                # Set author
                 post.author = request.user
-                post.slug = slugify(form.cleaned_data['title'])
                 
                 # Save to database
                 post.save()
                 
+                messages.success(request, "Post created successfully!")
                 return redirect('staff_dashboard')
                 
             except Exception as e:
-                error = f"Error creating post: {str(e)}"
+                messages.error(request, f"Error creating post: {str(e)}")
         else:
-            error = "Please correct the errors below"
+            # Collect form errors
+            errors = form.errors.as_text()
+            messages.error(request, f"Please correct the errors: {errors}")
     else:
         form = PostForm()
     
     return render(request, 'create_post.html', {
         'form': form,
-        'categories': categories,
-        'error': error
+        'categories': categories
     })
-    
 
 @login_required
 def technical_dashboard(request):
