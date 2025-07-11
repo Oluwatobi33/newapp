@@ -13,11 +13,18 @@ from .views import (
 )
 
 urlpatterns = [
+      path('', views.index, name='index'),
+    path('category/<slug:slug>/', views.category_posts, name='category_posts'),
+    path('post/<int:post_id>/', views.post_detail, name='post_detail'),
+    path('search/', views.search, name='search'),
         # Authentication URLs
-    path('login/', login_request, name='login'),
+    path('login/', login_request, name='signin'),
+    path('', views.index, name='index'),
+    
     path('verify-otp/', verify_otp, name='verify_otp'),
     path('resend-otp/', resend_otp, name='resend_otp'),
-        path('technical/review/<int:post_id>/', views.review_post, name='review_post'),
+    
+    path('technical/review/<int:post_id>/', views.review_post, name='review_post'),
     
     
     path('staff/dashboard/', views.staff_dashboard, name='staff_dashboard'),
@@ -25,11 +32,14 @@ urlpatterns = [
     path('create-post/', views.create_post, name='create_post'),
     
     path('categories/', CategoryListView.as_view(), name='category-list'),
+    
+    
     path('posts/', PostListView.as_view(), name='post-list'),
 
     path('logout/', views.logout_view, name='logout'),
     
     path('posts/create/', PostCreateView.as_view(), name='post_create'),
+    
     # path('posts/review/<int:pk>/', PostReviewView.as_view(), name='post_review'),
     
     path('posts/<slug:slug>/', PostDetailView.as_view(), name='post-detail'),

@@ -8,11 +8,16 @@ from django.contrib.auth import login, authenticate
 from django.utils import timezone
 from django.core.mail import send_mail
 from django.conf import settings
-from .models import User, StaffProfile, TechnicalProfile
+from .models import User
 from django.contrib.auth import get_user_model
 from django.shortcuts import render, get_object_or_404, redirect
-
-
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from .models import Post
+from django import forms
+from django.contrib.auth import logout
+from django.contrib import messages
+from rest_framework.permissions import *
 User = get_user_model()
 
 from .serializers import (
@@ -26,11 +31,18 @@ from .serializers import (
     CommentSerializer
 )
 
+
+def index(request):
+    return render(request,"index.html")
+
+
 # Custom pagination class
 class StandardResultsSetPagination(pagination.PageNumberPagination):
     page_size = 5
     page_size_query_param = 'page_size'
     max_page_size = 100
+
+
 
 class PostListView(generics.ListAPIView):
     serializer_class = PostListSerializer
@@ -83,14 +95,10 @@ class PostListView(generics.ListAPIView):
         ).select_related('author', 'category').prefetch_related('comments')
         return queryset
 
-# ... rest of your view classes ...
-
-
 
 class CategoryListView(generics.ListAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-
 
 
 class PostDetailView(generics.RetrieveAPIView):
@@ -112,6 +120,25 @@ class PostDetailView(generics.RetrieveAPIView):
         
         return Response(serializer.data)
 
+# views.py
+def search(request):
+    query = request.GET.get('q', '')
+    if query:
+        results = Post.objects.filter(
+            status='PUBLISHED',
+            title__icontains=query
+        ) | Post.objects.filter(
+            status='PUBLISHED',
+            content__icontains=query
+        )
+    else:
+        results = Post.objects.none()
+    
+    context = {
+        'query': query,
+        'results': results
+    }
+    return render(request, 'search.html', context)
 
 class PostCreateView(generics.CreateAPIView):
     serializer_class = PostCreateSerializer
@@ -128,21 +155,6 @@ class PostCreateView(generics.CreateAPIView):
 
 
 
-
-# @login_required
-# def create_post(request):
-#     # Only staff users can create posts
-#     if request.user.role != 'STAFF':
-#         return redirect('home')
-    
-#     if request.method == 'POST':
-#         # Process form data and create post
-#         # ... your implementation here ...
-        
-#         # For now, redirect to dashboard
-#         return redirect('staff_dashboard')
-    
-#     return render(request, 'create_post.html')
 
 class PostUpdateView(generics.UpdateAPIView):
     queryset = Post.objects.all()
@@ -204,42 +216,6 @@ class TechnicalSignupView(generics.CreateAPIView):
         
         return super().create(request, *args, **kwargs)
 
-from rest_framework.permissions import IsAuthenticated
-
-
-# class VerifyOTPView(APIView):
-#     permission_classes = [permissions.AllowAny]
-
-#     def post(self, request, format=None):
-#         user_id = request.data.get('user_id')
-#         otp = request.data.get('otp')
-        
-#         try:
-#             user = User.objects.get(id=user_id)
-#             if user.verify_otp(otp):
-#                 login(request, user)
-#                 return Response(
-#                     {
-#                         "detail": "OTP verified successfully",
-#                         "user": UserSerializer(user).data
-#                     },
-#                     status=status.HTTP_200_OK
-#                 )
-#             else:
-#                 return Response(
-#                     {"error": "Invalid or expired OTP"},
-#                     status=status.HTTP_400_BAD_REQUEST
-#                 )
-#         except User.DoesNotExist:
-#             return Response(
-#                 {"error": "User not found"},
-#                 status=status.HTTP_404_NOT_FOUND
-#             )
-
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
-from .models import Post
-from django import forms
 
 @login_required
 def staff_dashboard(request):
@@ -263,43 +239,15 @@ def staff_dashboard(request):
     return render(request, 'staff_dashboard.html', context)
 
 
-from django.contrib.auth import logout
-from django.contrib import messages
+
+
 @login_required
 def logout_view(request):
     logout(request)
-    return redirect('login')
-from datetime import timedelta
+    return redirect('signin')
 
-@login_required
-def technical_dashboard(request):
-    # Only technical users can access this
-    if request.user.role != 'TECHNICAL':
-        return redirect('index')
-    
-    # Get posts pending review
-    pending_posts = Post.objects.filter(status='PENDING_REVIEW').order_by('-created_at')
-    
-    # Get posts reviewed by this user in the last 30 days
-    seven_days_ago = timezone.now() - timedelta(days=30)
-    reviewed_posts = Post.objects.filter(
-        reviewed_by=request.user,
-        published_at__gte=seven_days_ago
-    ).exclude(status='PENDING_REVIEW').order_by('-published_at')[:10]
-    
-    # Stats for dashboard
-    pending_count = pending_posts.count()
-    reviewed_count = Post.objects.filter(reviewed_by=request.user).count()
-    recent_count = reviewed_posts.count()
-    
-    context = {
-        'pending_posts': pending_posts,
-        'reviewed_posts': reviewed_posts,
-        'pending_count': pending_count,
-        'reviewed_count': reviewed_count,
-        'recent_count': recent_count,
-    }
-    return render(request, 'technical_dashboard.html', context)
+
+
 
 @login_required
 def review_post(request, post_id):
@@ -336,14 +284,19 @@ def review_post(request, post_id):
     
     return render(request, 'review_post.html', {'post': post})
 
+
 class PostForm(forms.ModelForm):
     class Meta:
         model = Post
         fields = ['title', 'category', 'summary', 'content', 'featured_image', 'status']
         widgets = {
-            'summary': forms.Textarea(attrs={'rows': 3, 'maxlength': 300}),
+            'summary': forms.Textarea(attrs={'rows': 3, 'maxlength': 200}),
             'content': forms.Textarea(attrs={'rows': 10}),
         }
+
+
+
+
         labels = {
             'title': 'Post Title',
             'category': 'Category',
@@ -352,8 +305,8 @@ class PostForm(forms.ModelForm):
             'featured_image': 'Featured Image',
             'status': 'Post Status'
         }
-        
-        
+
+
 @login_required
 def create_post(request):
     # Only staff users can create posts
@@ -391,6 +344,9 @@ def create_post(request):
         'form': form,
         'categories': categories
     })
+
+
+
 
 @login_required
 def technical_dashboard(request):
