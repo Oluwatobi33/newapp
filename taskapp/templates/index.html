@@ -246,12 +246,12 @@
                         </a>
                     </li>
                     {% endfor %}
-                    <li class="nav-item">
+                    {% comment %} <li class="nav-item">
                         <a class="nav-link" href="#">About</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#">Contact</a>
-                    </li>
+                    </li> {% endcomment %}
                 </ul>
                 <form class="d-flex ms-3" action="{% url 'search' %}" method="GET">
                     <input class="form-control me-2" type="search" placeholder="Search" name="q">
@@ -259,6 +259,37 @@
                         <i class="bi bi-search"></i>
                     </button>
                 </form>
+
+{% comment %} <div class="container mt-5">
+    
+    {% if page_obj.object_list %}
+        <div class="row">
+            {% for post in page_obj.object_list %}
+            <div class="col-md-6 mb-4">
+                <div class="post-card">
+                    {% if post.featured_image %}
+                    <img src="{{ post.featured_image.url }}" alt="{{ post.title }}">
+                    {% else %}
+                    <img src="{% static 'images/default-thumbnail.jpg' %}" alt="Default image">
+                    {% endif %}
+                    <div class="post-content">
+                        <h3><a href="{{ post.title }}">{{ post.title }}</a></h3>
+                        <p>{{ post.summary }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Pagination -->
+        {% comment %} {% include 'pagination.html' %} {% endcomment %}
+    {% comment %} {% else %}
+        <div class="alert alert-info">
+            No results found for "{{ query }}"
+        </div>
+    {% endif %}
+</div> {% endcomment %} 
+
             </div>
         </div>
     </nav>
@@ -291,8 +322,9 @@
             </ul>
         </div>
     </div>
+    <h2>Search Results for "{{ query }}"</h2>
 
-    <!-- Main Content -->
+     <!-- Main Content -->
     <div class="container">
         <div class="row">
             <!-- Featured Post -->
@@ -347,7 +379,7 @@
                                         {% endif %}
                                         <span>{{ post.author.get_full_name }}</span>
                                     </div>
-                                    <span class="text-muted small">{{ post.published_at|date:"M d, Y" }}</span>
+                                    <span class="text-muted small">{{ post.published_at|date:"F j, Y"  }}</span>
                                 </div>
                             </div>
                         </div>
@@ -362,7 +394,7 @@
                 </div>
                 
                 <!-- Pagination -->
-                {% if posts.has_other_pages %}
+                {% comment %} {% if posts.has_other_pages %}
                 <nav aria-label="Blog pagination">
                     <ul class="pagination justify-content-center">
                         {% if posts.has_previous %}
@@ -394,7 +426,48 @@
                         {% endif %}
                     </ul>
                 </nav>
-                {% endif %}
+                {% endif %} {% endcomment %}
+                {% if page_obj.has_other_pages %}
+<nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}" aria-label="Previous">
+                <span aria-hidden="true">&laquo;</span>
+            </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <a class="page-link" href="#" tabindex="-1" aria-disabled="true">
+                <span aria-hidden="true">&laquo;</span>
+            </a>
+        </li>
+        {% endif %}
+        
+        {% for i in page_obj.paginator.page_range %}
+            {% if page_obj.number == i %}
+            <li class="page-item active"><a class="page-link" href="#">{{ i }}</a></li>
+            {% else %}
+            <li class="page-item"><a class="page-link" href="?page={{ i }}{% if query %}&q={{ query }}{% endif %}">{{ i }}</a></li>
+            {% endif %}
+        {% endfor %}
+        
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}" aria-label="Next">
+                <span aria-hidden="true">&raquo;</span>
+            </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <a class="page-link" href="#" aria-disabled="true">
+                <span aria-hidden="true">&raquo;</span>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
             </div>
             
             <!-- Sidebar -->
@@ -459,7 +532,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div> 
 
     <!-- Footer -->
     <footer class="footer">

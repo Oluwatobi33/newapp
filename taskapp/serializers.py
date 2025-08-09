@@ -50,7 +50,6 @@ class PostSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at', 'published_at', 'reviewed_by']
 
 
-
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category

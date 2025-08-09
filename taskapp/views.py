@@ -18,6 +18,12 @@ from django import forms
 from django.contrib.auth import logout
 from django.contrib import messages
 from rest_framework.permissions import *
+from rest_framework import generics, permissions, filters, pagination
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Post, Category, Comment
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.views.generic import ListView, DetailView
 User = get_user_model()
 
 from .serializers import (
@@ -31,9 +37,32 @@ from .serializers import (
     CommentSerializer
 )
 
+# def index(request):
+#     published_posts = Post.objects.filter(status='PUBLISHED').order_by('-published_at')
+#     context = {
+#         'posts': published_posts
+#     }
+#     return render(request, 'index.html', context)
 
-def index(request):
-    return render(request,"index.html")
+class CategoryPostView(ListView):
+    model = Post
+    template_name = 'category_posts.html'
+    context_object_name = 'posts'
+    paginate_by = 5
+    
+    def get_queryset(self):
+        category_slug = self.kwargs.get('slug')
+        self.category = get_object_or_404(Category, slug=category_slug)
+        return Post.objects.filter(
+            category=self.category,
+            status='PUBLISHED'
+        ).select_related('author').order_by('-published_at')
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['category'] = self.category
+        context['categories'] = Category.objects.all()
+        return context
 
 
 # Custom pagination class
@@ -41,7 +70,6 @@ class StandardResultsSetPagination(pagination.PageNumberPagination):
     page_size = 5
     page_size_query_param = 'page_size'
     max_page_size = 100
-
 
 
 class PostListView(generics.ListAPIView):
@@ -61,9 +89,7 @@ class PostListView(generics.ListAPIView):
         return queryset
 
 # ... rest of your view classes ...from django.utils import timezone
-from rest_framework import generics, permissions, filters, pagination
-from django_filters.rest_framework import DjangoFilterBackend
-from .models import Post, Category, Comment
+
 
 from .serializers import (
     CategorySerializer, 
@@ -79,66 +105,67 @@ class StandardResultsSetPagination(pagination.PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 100
 
-class PostListView(generics.ListAPIView):
-    serializer_class = PostListSerializer
-    pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['category', 'author', 'status']
-    search_fields = ['title', 'summary', 'content']
-    ordering_fields = ['publish_date', 'created_at', 'views']
-    ordering = ['-publish_date']
-
-    def get_queryset(self):
-        queryset = Post.objects.filter(
-            status='published',
-            publish_date__lte=timezone.now()
-        ).select_related('author', 'category').prefetch_related('comments')
-        return queryset
-
 
 class CategoryListView(generics.ListAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
 
-class PostDetailView(generics.RetrieveAPIView):
-    queryset = Post.objects.all()
-    serializer_class = PostDetailSerializer
-    lookup_field = 'slug'
-
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
+class PostDetailView(DetailView):
+    model = Post
+    template_name = 'post_detail.html'
+    context_object_name = 'post'
+    
+    def get_queryset(self):
+        # Only show published posts to non-staff users
+        queryset = super().get_queryset()
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(status='PUBLISHED')
+        return queryset
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['categories'] = Category.objects.all()
         
-        # Track view
-        ip_address = request.META.get('REMOTE_ADDR')
-        PostView.objects.create(
-            post=instance,
-            ip_address=ip_address,
-            user=request.user if request.user.is_authenticated else None
-        )
+        # Track view count
+        if self.object.status == 'PUBLISHED':
+            ip_address = self.request.META.get('REMOTE_ADDR')
+            PostView.objects.create(
+                post=self.object,
+                ip_address=ip_address,
+                user=self.request.user if self.request.user.is_authenticated else None
+            )
         
-        return Response(serializer.data)
+        return context
 
 # views.py
+
+
 def search(request):
     query = request.GET.get('q', '')
     if query:
         results = Post.objects.filter(
-            status='PUBLISHED',
-            title__icontains=query
-        ) | Post.objects.filter(
-            status='PUBLISHED',
-            content__icontains=query
-        )
+            Q(status='PUBLISHED') &
+            (Q(title__icontains=query) | 
+             Q(content__icontains=query) |
+             Q(summary__icontains=query))
+        ).select_related('author', 'category').order_by('-published_at')
     else:
         results = Post.objects.none()
     
+    # Pagination
+    paginator = Paginator(results, 5)  # 5 posts per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
     context = {
         'query': query,
-        'results': results
+        'page_obj': page_obj,
+        'categories': Category.objects.all()
     }
     return render(request, 'search.html', context)
+
+
 
 class PostCreateView(generics.CreateAPIView):
     serializer_class = PostCreateSerializer
@@ -154,8 +181,6 @@ class PostCreateView(generics.CreateAPIView):
         serializer.save(author=self.request.user)
 
 
-
-
 class PostUpdateView(generics.UpdateAPIView):
     queryset = Post.objects.all()
     serializer_class = PostCreateSerializer
@@ -164,6 +189,7 @@ class PostUpdateView(generics.UpdateAPIView):
 
     def get_queryset(self):
         return self.queryset.filter(author=self.request.user)
+
 
 
 class PostDeleteView(generics.DestroyAPIView):
@@ -185,7 +211,6 @@ class CommentCreateView(generics.CreateAPIView):
         serializer.save(user=self.request.user, post=post)
 
 
-
 class StaffSignupView(generics.CreateAPIView):
     serializer_class = StaffProfileSerializer
     permission_classes = [permissions.AllowAny]
@@ -201,6 +226,7 @@ class StaffSignupView(generics.CreateAPIView):
         
         return super().create(request, *args, **kwargs)
 
+
 class TechnicalSignupView(generics.CreateAPIView):
     serializer_class = TechnicalProfileSerializer
     permission_classes = [permissions.AllowAny]
@@ -215,6 +241,35 @@ class TechnicalSignupView(generics.CreateAPIView):
             )
         
         return super().create(request, *args, **kwargs)
+
+
+class HomeView(ListView):
+    model = Post
+    template_name = 'index.html'
+    context_object_name = 'posts'
+    paginate_by = 5  # Number of posts per page
+
+
+    def get_queryset(self):
+        # Get only published posts ordered by most recent
+        queryset = Post.objects.filter(status='PUBLISHED').select_related(
+            'author', 'category'
+        ).order_by('-published_at')
+        
+        # Get featured post (first published post)
+        self.featured_post = queryset.first()
+        
+        # Exclude featured post from regular posts
+        if self.featured_post:
+            queryset = queryset.exclude(id=self.featured_post.id)
+
+        return queryset
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['featured_post'] = self.featured_post
+        context['categories'] = Category.objects.all()
+        return context
 
 
 @login_required
@@ -239,14 +294,10 @@ def staff_dashboard(request):
     return render(request, 'staff_dashboard.html', context)
 
 
-
-
 @login_required
 def logout_view(request):
     logout(request)
     return redirect('signin')
-
-
 
 
 @login_required
@@ -294,9 +345,6 @@ class PostForm(forms.ModelForm):
             'content': forms.Textarea(attrs={'rows': 10}),
         }
 
-
-
-
         labels = {
             'title': 'Post Title',
             'category': 'Category',
@@ -305,7 +353,6 @@ class PostForm(forms.ModelForm):
             'featured_image': 'Featured Image',
             'status': 'Post Status'
         }
-
 
 @login_required
 def create_post(request):
@@ -346,8 +393,6 @@ def create_post(request):
     })
 
 
-
-
 @login_required
 def technical_dashboard(request):
     # Only technical users can access this
@@ -360,7 +405,7 @@ def technical_dashboard(request):
     # Get recently reviewed posts
     reviewed_posts = Post.objects.filter(
         reviewed_by=request.user
-    ).exclude(status='PENDING_REVIEW').order_by('-published_at')[:5]
+    ).exclude(status='PENDING_REVIEW').order_by('-published_at')[:12]
     
     context = {
         'pending_posts': pending_posts,
@@ -368,3 +413,6 @@ def technical_dashboard(request):
         'pending_count': pending_posts.count(),
     }
     return render(request, 'technical_dashboard.html', context)
+
+
+
