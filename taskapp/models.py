@@ -145,12 +145,23 @@ class TechnicalProfile(models.Model):
         return f"{self.user.first_name} {self.user.last_name} ({self.position})"
 
 
+
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Categories"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    def get_published_posts_count(self):
+        return self.post_category.filter(status='PUBLISHED').count()
 
     class Meta:
         verbose_name_plural = "Categories"
@@ -196,6 +207,24 @@ class Post(models.Model):
         blank=True, 
         related_name='reviewed_posts'
     )
+    
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse('post_detail', kwargs={'pk': self.id})
+    
+    def get_meta_description(self):
+        return self.summary[:160]  # Recommended length for meta description
+    
+    def get_keywords(self):
+        # Extract keywords from title and content
+        from collections import Counter
+        import re
+        
+        text = f"{self.title} {self.summary}"
+        words = re.findall(r'\w+', text.lower())
+        most_common = Counter(words).most_common(5)
+        return ', '.join([word[0] for word in most_common])
+    
 
     class Meta:
         ordering = ['-created_at']
@@ -223,6 +252,7 @@ class Post(models.Model):
         words = re.findall(r'\w+', text.lower())
         most_common = Counter(words).most_common(5)
         return ', '.join([word[0] for word in most_common])
+
 
 
 class Comment(models.Model):

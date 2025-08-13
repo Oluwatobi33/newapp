@@ -242,34 +242,10 @@ class TechnicalSignupView(generics.CreateAPIView):
         
         return super().create(request, *args, **kwargs)
 
-
-class HomeView(ListView):
-    model = Post
-    template_name = 'index.html'
-    context_object_name = 'posts'
-    paginate_by = 5  # Number of posts per page
-
-
-    def get_queryset(self):
-        # Get only published posts ordered by most recent
-        queryset = Post.objects.filter(status='PUBLISHED').select_related(
-            'author', 'category'
-        ).order_by('-published_at')
-        
-        # Get featured post (first published post)
-        self.featured_post = queryset.first()
-        
-        # Exclude featured post from regular posts
-        if self.featured_post:
-            queryset = queryset.exclude(id=self.featured_post.id)
-
-        return queryset
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['featured_post'] = self.featured_post
-        context['categories'] = Category.objects.all()
-        return context
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Count, Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 
 @login_required
@@ -416,3 +392,77 @@ def technical_dashboard(request):
 
 
 
+class HomeView(ListView):
+    model = Post
+    template_name = 'index.html'
+    context_object_name = 'posts'
+    paginate_by = 10  # 10 posts per page
+
+    def get_queryset(self):
+        # Get only published posts ordered by most recent
+        queryset = Post.objects.filter(
+            status='PUBLISHED',
+            published_at__lte=timezone.now()
+        ).select_related('author', 'category').order_by('-published_at')
+        
+        # Get featured post (most recent published post)
+        self.featured_post = queryset.first()
+        
+        # Exclude featured post from regular posts
+        if self.featured_post:
+            queryset = queryset.exclude(id=self.featured_post.id)
+        
+        return queryset
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['featured_post'] = self.featured_post
+        
+        # Get all categories with published post counts
+        categories = Category.objects.annotate(
+            post_count=Count('post_category', filter=Q(post_category__status='PUBLISHED'))
+        context['categories'] = categories
+        
+        # Get popular posts (most viewed published posts)
+        context['popular_posts'] = Post.objects.filter(
+            status='PUBLISHED'
+        ).annotate(view_count=Count('postview')).order_by('-view_count')[:5]
+        
+        # Add today's date for filtering
+        context['today'] = timezone.now().date()
+        
+        return context
+
+def search(request):
+    query = request.GET.get('q', '')
+    if query:
+        results = Post.objects.filter(
+            Q(status='PUBLISHED') &
+            (Q(title__icontains=query) | 
+             Q(content__icontains=query) |
+             Q(summary__icontains=query))
+        ).select_related('author', 'category').order_by('-published_at')
+    else:
+        results = Post.objects.none()
+    
+    # Pagination with 10 posts per page
+    paginator = Paginator(results, 10)
+    page_number = request.GET.get('page')
+    
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+    
+    # Get categories with counts
+    categories = Category.objects.annotate(
+        post_count=Count('post_category', filter=Q(post_category__status='PUBLISHED')
+        
+    context = {
+        'query': query,
+        'page_obj': page_obj,
+        'categories': categories
+    }
+    return render(request, 'search.html', context)
