@@ -171,6 +171,10 @@ class Category(models.Model):
         return self.name
 
 
+from django.utils.text import slugify
+
+
+
 class Post(models.Model):
     STATUS_CHOICES = [
         ('DRAFT', 'Draft'),
@@ -178,7 +182,8 @@ class Post(models.Model):
         ('PUBLISHED', 'Published'),
         ('REJECTED', 'Rejected'),
     ]
-    
+
+
     category = models.ForeignKey(
         Category, 
         on_delete=models.SET_NULL, 
@@ -186,6 +191,7 @@ class Post(models.Model):
         blank=True, 
         related_name='post_category'
     )
+
     author = models.ForeignKey(
         User, 
         on_delete=models.CASCADE, 
@@ -194,6 +200,8 @@ class Post(models.Model):
     title = models.CharField(max_length=200, validators=[MinLengthValidator(10)])
     # REMOVED SLUG FIELD
     summary = models.TextField(max_length=300)
+
+    
     content = models.TextField()
     featured_image = models.ImageField(upload_to='post_images/', blank=True, null=True)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='DRAFT')
@@ -207,42 +215,44 @@ class Post(models.Model):
         blank=True, 
         related_name='reviewed_posts'
     )
-    
+
     def get_absolute_url(self):
-        from django.urls import reverse
-        return reverse('post_detail', kwargs={'pk': self.id})
-    
+            from django.urls import reverse
+            return reverse('post_detail', kwargs={'pk': self.pk})
+        
     def get_meta_description(self):
-        return self.summary[:160]  # Recommended length for meta description
+        return self.summary[:160]
     
     def get_keywords(self):
-        # Extract keywords from title and content
         from collections import Counter
         import re
-        
         text = f"{self.title} {self.summary}"
         words = re.findall(r'\w+', text.lower())
         most_common = Counter(words).most_common(5)
         return ', '.join([word[0] for word in most_common])
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.title)
+            # Ensure uniqueness
+            original_slug = self.slug
+            counter = 1
+            while Post.objects.filter(slug=self.slug).exists():
+                self.slug = f"{original_slug}-{counter}"
+                counter += 1
     
 
     class Meta:
         ordering = ['-created_at']
         indexes = [models.Index(fields=['-created_at'])]
 
-    def __str__(self):
-        return self.title
-
-    def save(self, *args, **kwargs):
-        if self.status == 'PUBLISHED' and not self.published_at:
-            self.published_at = timezone.now()
-        super().save(*args, **kwargs)
-
     def get_meta_description(self):
         return self.summary[:160]  # Recommended length for meta description
-    
-    def get_absolute_url(self):
-        return reverse('post_detail', kwargs={'slug': self.title})
+
+
+
+
+
     def get_keywords(self):
         # Extract keywords from title and content
         from collections import Counter
@@ -298,3 +308,4 @@ class PostView(models.Model):
         verbose_name = 'Post View'
         verbose_name_plural = 'Post Views'
         ordering = ['-view_date']
+        

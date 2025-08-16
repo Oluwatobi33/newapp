@@ -1,0 +1,41 @@
+
+{% load static %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <article class="card shadow-sm">
+                {% if post.featured_image %}
+                <img src="{{ post.featured_image.url }}" class="card-img-top" alt="{{ post.title }}">
+                {% endif %}
+                <div class="card-body">
+                    <span class="badge bg-primary mb-3">{{ post.category.name }}</span>
+                    <h1 class="card-title">{{ post.title }}</h1>
+                    
+                    <div class="d-flex align-items-center mb-4">
+                        {% if post.author.profile_picture %}
+                        <img src="{{ post.author.profile_picture.url }}" 
+                             class="rounded-circle me-2" width="40" alt="{{ post.author.get_full_name }}">
+                        {% else %}
+                        <i class="bi bi-person-circle me-2 fs-4"></i>
+                        {% endif %}
+                        <div>
+                            <h6 class="mb-0">{{ post.author.get_full_name }}</h6>
+                            <small class="text-muted">
+                                <i class="bi bi-clock me-1"></i> 
+                                {{ post.published_at|date:"F j, Y" }}
+                                <i class="bi bi-eye ms-3 me-1"></i> {{ post.post_views.count }} views
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="card-text">
+                        {{ post.content|safe }}
+                    </div>
+                </div>
+            </article>
+        </div>
+    </div>
+</div>
+{% endblock %}

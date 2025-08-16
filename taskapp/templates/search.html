@@ -1,57 +1,27 @@
 {% load static %}
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-</head>
-<body>
-{% block title %}Search Results for "{{ query }}" | Your Site Name{% endblock %}
-
 {% block content %}
-<div class="container mt-5">
-    <h2>Search Results for "{{ query }}"</h2>
+<div class="container my-5">
+    <h2 class="mb-4">Search Results</h2>
     
+    {% if query %}
+        <p class="mb-4">Showing {{ results_count }} results for "{{ query }}"</p>
+    {% endif %}
+
     {% if page_obj.object_list %}
-        <div class="alert alert-info">
-            Found {{ page_obj.paginator.count }} results
-        </div>
-        
         <div class="row">
             {% for post in page_obj.object_list %}
-            <div class="col-md-6 mb-4">
-                <div class="post-card h-100">
-                    {% if post.featured_image %}
-                    <img src="{{ post.featured_image.url }}" alt="{{ post.title }}" class="img-fluid">
-                    {% else %}
-                    <img src="{% static 'images/default-thumbnail.jpg' %}" alt="Default image" class="img-fluid">
-                    {% endif %}
-                    <div class="post-content">
-                        <div class="category-tag">{{ post.category.name }}</div>
-                        <h3><a href="{{ post.get_absolute_url }}">{{ post.title }}</a></h3>
-                        <p>{{ post.summary|truncatechars:150 }}</p>
-                        <div class="d-flex justify-content-between align-items-center mt-2">
-                            <span class="text-muted small">
-                                {{ post.published_at|date:"F j, Y" }}
-                            </span>
-                            <a href="{{ post.get_absolute_url }}" class="btn btn-sm btn-outline-primary">Read More</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                <!-- Use the same post card design as your index.html -->
+                {% include 'partials/post_card.html' with post=post %}
             {% endfor %}
         </div>
         
         <!-- Pagination -->
-        {% include 'pagination.html' %}
+        {% include 'partials/pagination.html' with page_obj=page_obj %}
     {% else %}
-        <div class="alert alert-warning">
-            No results found for "{{ query }}"
+        <div class="alert alert-info">
+            No results found{% if query %} for "{{ query }}"{% endif %}.
         </div>
     {% endif %}
 </div>
 {% endblock %}
-</body>
-</html>

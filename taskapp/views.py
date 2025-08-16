@@ -37,12 +37,7 @@ from .serializers import (
     CommentSerializer
 )
 
-# def index(request):
-#     published_posts = Post.objects.filter(status='PUBLISHED').order_by('-published_at')
-#     context = {
-#         'posts': published_posts
-#     }
-#     return render(request, 'index.html', context)
+
 
 class CategoryPostView(ListView):
     model = Post
@@ -88,8 +83,6 @@ class PostListView(generics.ListAPIView):
         ).select_related('author', 'category').prefetch_related('comments')
         return queryset
 
-# ... rest of your view classes ...from django.utils import timezone
-
 
 from .serializers import (
     CategorySerializer, 
@@ -99,7 +92,7 @@ from .serializers import (
     CommentSerializer
 )
 
-# Custom pagination class
+
 class StandardResultsSetPagination(pagination.PageNumberPagination):
     page_size = 5
     page_size_query_param = 'page_size'
@@ -138,8 +131,6 @@ class PostDetailView(DetailView):
         
         return context
 
-# views.py
-
 
 def search(request):
     query = request.GET.get('q', '')
@@ -164,7 +155,6 @@ def search(request):
         'categories': Category.objects.all()
     }
     return render(request, 'search.html', context)
-
 
 
 class PostCreateView(generics.CreateAPIView):
@@ -312,15 +302,35 @@ def review_post(request, post_id):
     return render(request, 'review_post.html', {'post': post})
 
 
+
+
 class PostForm(forms.ModelForm):
     class Meta:
         model = Post
         fields = ['title', 'category', 'summary', 'content', 'featured_image', 'status']
         widgets = {
-            'summary': forms.Textarea(attrs={'rows': 3, 'maxlength': 200}),
-            'content': forms.Textarea(attrs={'rows': 10}),
+            'summary': forms.Textarea(attrs={
+                'rows': 3,
+                'maxlength': 200,
+                'class': 'form-control',
+                'placeholder': 'Enter a brief summary (max 200 characters)'
+            }),
+            'content': forms.Textarea(attrs={
+                'rows': 10,
+                'class': 'form-control',
+                'placeholder': 'Write your post content here...'
+            }),
+            'title': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Enter post title'
+            }),
+            'category': forms.Select(attrs={
+                'class': 'form-select'
+            }),
+            'status': forms.Select(attrs={
+                'class': 'form-select'
+            })
         }
-
         labels = {
             'title': 'Post Title',
             'category': 'Category',
@@ -330,43 +340,49 @@ class PostForm(forms.ModelForm):
             'status': 'Post Status'
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Limit category choices to only active categories if needed
+        self.fields['category'].queryset = Category.objects.all()
+        # Set initial status to DRAFT for staff users
+        self.fields['status'].initial = 'DRAFT'
+
 @login_required
 def create_post(request):
     # Only staff users can create posts
     if request.user.role != 'STAFF':
+        messages.error(request, "You don't have permission to create posts.")
         return redirect('index')
-    
-    categories = Category.objects.all()
     
     if request.method == 'POST':
         form = PostForm(request.POST, request.FILES)
         if form.is_valid():
             try:
-                # Create but don't save yet
                 post = form.save(commit=False)
-                
-                # Set author
                 post.author = request.user
                 
-                # Save to database
-                post.save()
+                # If status is being submitted for review
+                if form.cleaned_data['status'] == 'PENDING_REVIEW':
+                    messages.info(request, "Your post has been submitted for review.")
                 
+                post.save()
                 messages.success(request, "Post created successfully!")
                 return redirect('staff_dashboard')
                 
             except Exception as e:
                 messages.error(request, f"Error creating post: {str(e)}")
         else:
-            # Collect form errors
-            errors = form.errors.as_text()
-            messages.error(request, f"Please correct the errors: {errors}")
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"{field}: {error}")
     else:
         form = PostForm()
     
     return render(request, 'create_post.html', {
         'form': form,
-        'categories': categories
+        'categories': Category.objects.all()
     })
+    
 
 
 @login_required
@@ -392,60 +408,121 @@ def technical_dashboard(request):
 
 
 
+
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Count, Q
+from django.shortcuts import render, get_object_or_404
+from django.utils import timezone
+from django.views.generic import ListView
+from .models import Post, Category, PostView
+
+
 class HomeView(ListView):
     model = Post
     template_name = 'index.html'
     context_object_name = 'posts'
-    paginate_by = 10  # 10 posts per page
-
+    paginate_by = 10
+    
     def get_queryset(self):
-        # Get only published posts ordered by most recent
         queryset = Post.objects.filter(
             status='PUBLISHED',
+            published_at__isnull=False,
             published_at__lte=timezone.now()
         ).select_related('author', 'category').order_by('-published_at')
         
-        # Get featured post (most recent published post)
-        self.featured_post = queryset.first()
-        
-        # Exclude featured post from regular posts
-        if self.featured_post:
-            queryset = queryset.exclude(id=self.featured_post.id)
+        # Handle search if query exists
+        search_query = self.request.GET.get('q')
+        if search_query:
+            queryset = queryset.filter(
+                Q(title__icontains=search_query) |
+                Q(content__icontains=search_query) |
+                Q(summary__icontains=search_query)
+            )
         
         return queryset
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['featured_post'] = self.featured_post
         
-        # Get all categories with published post counts
-        categories = Category.objects.annotate(
-            post_count=Count('post_category', filter=Q(post_category__status='PUBLISHED'))
-        context['categories'] = categories
+        # Featured post (most recent)
+        context['featured_post'] = self.get_queryset().first()
         
-        # Get popular posts (most viewed published posts)
+        # Popular posts (most viewed)
         context['popular_posts'] = Post.objects.filter(
-            status='PUBLISHED'
-        ).annotate(view_count=Count('postview')).order_by('-view_count')[:5]
+            status='PUBLISHED',
+            published_at__lte=timezone.now()
+        ).annotate(view_count=Count('post_views')).order_by('-view_count')[:5]
         
-        # Add today's date for filtering
-        context['today'] = timezone.now().date()
+        # Categories with counts
+        context['categories'] = Category.objects.annotate(
+            post_count=Count('post_category', 
+                           filter=Q(post_category__status='PUBLISHED',
+                                  post_category__published_at__lte=timezone.now())))
+        
+        # Search query
+        context['query'] = self.request.GET.get('q', '')
         
         return context
 
+# class HomeView(ListView):
+#     model = Post
+#     template_name = 'index.html'
+#     context_object_name = 'posts'
+#     paginate_by = 10  # 10 posts per page
+
+#     def get_queryset(self):
+#         # Get only published posts ordered by most recent
+#         queryset = Post.objects.filter(
+#             status='PUBLISHED',
+#             published_at__lte=timezone.now()
+#         ).select_related('author', 'category').order_by('-published_at')
+        
+#         # Get featured post (most recent published post)
+#         self.featured_post = queryset.first()
+        
+#         # Exclude featured post from regular posts
+#         if self.featured_post:
+#             queryset = queryset.exclude(id=self.featured_post.id)
+        
+#         return queryset
+
+#     def get_context_data(self, **kwargs):
+#         context = super().get_context_data(**kwargs)
+#         context['featured_post'] = self.featured_post
+
+
+#         # Get all categories with published post counts
+#         categories = Category.objects.annotate(post_count=Count('post_category', filter=Q(post_category__status='PUBLISHED')))
+        
+                                               
+#         context['categories'] = categories
+
+#         # Get popular posts (most viewed published posts)
+#         context['popular_posts'] = Post.objects.filter(
+#             status='PUBLISHED'
+#         ).annotate(view_count=Count('post_views')).order_by('-view_count')[:5]
+
+#         # Add today's date for filtering
+#         context['today'] = timezone.now().date()
+
+#         # return context
+# views.py
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+
 def search(request):
     query = request.GET.get('q', '')
+    results = Post.objects.none()
+    
     if query:
         results = Post.objects.filter(
-            Q(status='PUBLISHED') &
-            (Q(title__icontains=query) | 
-             Q(content__icontains=query) |
-             Q(summary__icontains=query))
+            status='PUBLISHED',
+            published_at__lte=timezone.now()
+        ).filter(
+            Q(title__icontains=query) | 
+            Q(content__icontains=query) |
+            Q(summary__icontains=query)
         ).select_related('author', 'category').order_by('-published_at')
-    else:
-        results = Post.objects.none()
-    
-    # Pagination with 10 posts per page
+
     paginator = Paginator(results, 10)
     page_number = request.GET.get('page')
     
@@ -455,14 +532,31 @@ def search(request):
         page_obj = paginator.page(1)
     except EmptyPage:
         page_obj = paginator.page(paginator.num_pages)
-    
-    # Get categories with counts
+
     categories = Category.objects.annotate(
-        post_count=Count('post_category', filter=Q(post_category__status='PUBLISHED')
-        
+        post_count=Count('post_category', 
+                       filter=Q(post_category__status='PUBLISHED',
+                              post_category__published_at__lte=timezone.now())))
+    
     context = {
         'query': query,
         'page_obj': page_obj,
-        'categories': categories
+        'categories': categories,
+        'results_count': results.count()
     }
-    return render(request, 'search.html', context)
+    return render(request, 'search.html', context)        
+
+
+from django.shortcuts import get_object_or_404
+
+def post_detail(request, pk):
+    post = get_object_or_404(Post, pk=pk, status='PUBLISHED')
+    
+    if not request.user.is_authenticated or request.user != post.author:
+        PostView.objects.create(
+            post=post,
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user=request.user if request.user.is_authenticated else None
+        )
+    
+    return render(request, 'post_detail.html', {'post': post})
